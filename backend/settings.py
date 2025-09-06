@@ -1,9 +1,44 @@
-from typing import Literal
-from MillenniumUtils import CheckBox, DefineSetting, DropDown, NumberTextInput, Settings, FloatSlider, StringTextInput, FloatTextInput, NumberSlider, OnAfterChangeCallback, CallbackLocation
+from MillenniumUtils import CheckBox, DefineSetting, DropDown, NumberTextInput, Settings, FloatSlider, StringTextInput, FloatTextInput, NumberSlider
 from logger import logger
+from settings_observer import SettingsObservable, PluginSettingsObserver, CallbackSettingsObserver
 
 
-class PluginSettings(metaclass=Settings):
+class ObservableSettings(Settings):
+    """Custom metaclass that adds observer functionality to Settings."""
+    
+    def __new__(mcs, name, bases, namespace):
+        cls = super().__new__(mcs, name, bases, namespace)
+        
+        # Add observer functionality
+        cls._observable = SettingsObservable()
+        cls._default_observer = PluginSettingsObserver()
+        cls._callback_observer = CallbackSettingsObserver()
+        
+        # Add observers
+        cls._observable.add_observer(cls._default_observer)
+        cls._observable.add_observer(cls._callback_observer)
+        
+        # Store original __setattr__ method
+        original_setattr = cls.__setattr__
+        
+        def observable_setattr(self, name, value):
+            # Get old value if it exists
+            old_value = getattr(self, name, None) if hasattr(self, name) else None
+            
+            # Set the new value
+            original_setattr(self, name, value)
+            
+            # Notify observers if this is a setting property
+            if hasattr(self.__class__, name) and not name.startswith('_'):
+                cls._observable.notify_observers(name, value, old_value)
+        
+        # Replace __setattr__ with our observable version
+        cls.__setattr__ = observable_setattr
+        
+        return cls
+
+
+class PluginSettings(metaclass=ObservableSettings):
 
     @DefineSetting(
         name='CheckBox Example', 
@@ -61,17 +96,31 @@ class PluginSettings(metaclass=Settings):
     )
     def floatTextInput(self): pass
 
-    @OnAfterChangeCallback
-    def onChange(self, key: str, value: str, prev: str, origin: CallbackLocation):
+    @classmethod
+    def register_callback(cls, setting_name: str, callback):
         """
-        This function is triggered whenever a setting is changed, regardless of where the change originates. 
-        For example, if you include the following line inside this function:
+        Register a custom callback for a specific setting.
         
-        PluginSettings.numberTextInput += 1
-
-        the function will be immediately be called again, potentially causing an infinite loop if you don't check origin or use flags — so use caution.
-
-        NOTE: There's no need to manually update the frontend, webview, or this setting, as all components are automatically kept in sync.
+        Args:
+            setting_name: The name of the setting to monitor
+            callback: Function to call when the setting changes
+                     Signature: callback(setting_name, new_value, old_value)
         """
-        logger.log(f"Setting {key} changed to {value} from {origin}.")
+        cls._callback_observer.register_callback(setting_name, callback)
+    
+    @classmethod
+    def unregister_callback(cls, setting_name: str):
+        """Remove callback for a specific setting."""
+        cls._callback_observer.unregister_callback(setting_name)
+    
+    @classmethod
+    def add_observer(cls, observer):
+        """Add a custom observer to monitor all setting changes."""
+        cls._observable.add_observer(observer)
+    
+    @classmethod
+    def remove_observer(cls, observer):
+        """Remove a custom observer."""
+        cls._observable.remove_observer(observer)
+
 

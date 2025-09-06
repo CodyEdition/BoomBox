@@ -1,7 +1,7 @@
 {
 	"scripts": {
-		"dev": "millennium-ttc --build dev",
-		"build": "millennium-ttc --build prod"
+		"dev": "npx @steambrew/ttc --build dev",
+		"build": "npx @steambrew/ttc --build prod"
 	},
 	"devDependencies": {
 		"@babel/preset-env": "^7.26.0",
